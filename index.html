@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Selection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-image: url('background.jpg'); /* Add the path to your background image */
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        .container {
+            text-align: center;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+        }
+        h1 {
+            margin-bottom: 20px;
+            color: #007bff;
+        }
+        select {
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+            width: 100%;
+            max-width: 300px;
+            font-size: 16px;
+        }
+        img {
+            max-width: 100%;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Select a Model</h1>
+        <select id="modelSelect">
+            <option value="liver_tumor">Liver Tumor Detection</option>
+            <option value="liver_segmentation">Liver Segmentation</option>
+            <option value="couinaud_segmentation">Couinaud Segmentation</option>
+        </select>
+        <div id="imageContainer"></div>
+        <form id="predictionForm" action="/predict" method="POST" enctype="multipart/form-data">
+            <input type="file" name="file" accept="image/*" id="fileInput">
+            <input type="hidden" name="selected_model" id="selectedModel">
+            <button type="submit" id="predictButton">Predict</button>
+        </form>
+        <div id="feedback" class="feedback"></div>
+        <div class="image-container" id="inputImageContainer"></div>
+        <div class="image-container" id="outputImageContainer"></div>
+    </div>
+
+    <script>
+        const modelSelect = document.getElementById('modelSelect');
+        const imageContainer = document.getElementById('imageContainer');
+        const predictionForm = document.getElementById('predictionForm');
+        const fileInput = document.getElementById('fileInput');
+        const predictButton = document.getElementById('predictButton');
+        const feedback = document.getElementById('feedback');
+        const inputImageContainer = document.getElementById('inputImageContainer');
+        const outputImageContainer = document.getElementById('outputImageContainer');
+
+        modelSelect.addEventListener('change', () => {
+            const selectedModel = modelSelect.value;
+            let imageUrl = '';
+
+            switch (selectedModel) {
+                case 'liver_tumor':
+                    imageUrl = 'liver_tumor_image.jpeg';
+                    break;
+                case 'liver_segmentation':
+                    imageUrl = 'liver_seg.jpg';
+                    break;
+                case 'couinaud_segmentation':
+                    imageUrl = 'couinaud_segmentation_image.jpeg';
+                    break;
+                default:
+                    imageUrl = '';
+                    break;
+            }
+
+            if (imageUrl) {
+                imageContainer.innerHTML = `<img src="${imageUrl}" alt="${selectedModel} Image">`;
+                // Show the prediction form when a model is selected
+                predictionForm.style.display = 'block';
+                // Set the selected model value in the hidden input field
+                document.getElementById('selectedModel').value = selectedModel;
+            } else {
+                imageContainer.innerHTML = '';
+                // Hide the prediction form when no model is selected
+                predictionForm.style.display = 'none';
+            }
+        });
+
+        predictionForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+        
+            // Check if a file is selected
+            if (!fileInput.files[0]) {
+                showFeedback('error', 'Please select an image file.');
+                return;
+            }
+        
+            // Disable the predict button and provide feedback
+            predictButton.disabled = true;
+            showFeedback('success', 'Predicting...');
+        
+            // Create a new FormData object and append the selected file and the selected model
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('selected_model', modelSelect.value);
+        
+            try {
+                // Send a POST request to the server with the form data
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    body: formData
+                });
+        
+                // Parse the JSON response from the server
+                const data = await response.json();
+        
+                // Check if there was an error in the response
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+        
+                // Display the predicted image and input image
+                displayOutputImage(data.output_image_url);
+                displayInputImage(fileInput.files[0]);
+        
+                // Provide feedback to the user
+                showFeedback('success', 'Prediction successful.');
+            } catch (error) {
+                // Provide feedback in case of an error
+                showFeedback('error', `Prediction failed: ${error.message}`);
+            } finally {
+                // Re-enable the predict button
+                predictButton.disabled = false;
+            }
+        });
+        
+        // Function to display the output image
+        function displayOutputImage(outputImageUrl) {
+            const img = document.createElement('img');
+            img.src = outputImageUrl;
+            outputImageContainer.innerHTML = ''; // Clear any existing content
+            outputImageContainer.appendChild(img);
+        }
+
+        function showFeedback(type, message) {
+            feedback.textContent = message;
+            feedback.className = `feedback ${type}`;
+        }
+
+        function displayInputImage(file) {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const img = document.createElement('img');
+                img.src = reader.result;
+                inputImageContainer.innerHTML = '';
+                inputImageContainer.appendChild(img);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function fetchPredictedImage(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                redirectToResult(data.image_data, data.result); // Redirect to result page
+            } catch (error) {
+                console.error('Error fetching predicted image:', error);
+            }
+        }
+
+        function redirectToResult(imageData, result) {
+            // Convert the image data to base64 format
+            const base64ImageData = btoa(imageData);
+            // Redirect to the result page with image data and result
+            window.location.href = `/result?image_data=${base64ImageData}&result=${result}`;
+        }
+    </script>
+</body>
+</html>
